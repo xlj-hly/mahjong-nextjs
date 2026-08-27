@@ -11,6 +11,8 @@
   "bracketSameLine": false,
   "endOfLine": "lf",
   "ignorePatterns": [
+    ".agents/**",
+    ".claude/**",
     "dist/**",
     "coverage/**",
     "public/**",
