@@ -34,6 +34,7 @@ export function ctx(overrides: Partial<WinContext> = {}): WinContext {
     isKongReplacement: false,
     isRobbingKong: false,
     visibleCount: 0,
+    voidedSuit: null,
     ...overrides,
   }
 }

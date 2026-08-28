@@ -8,12 +8,27 @@ import type { Action } from '@/game/core/state-machine'
 import { seatName } from '@/game/core/state-machine'
 import type { Seat } from '@/game/core/rules-plugin'
 import type { Meld } from '@/game/core/decompose'
-import { tileLabel } from '@/game/core/tile'
+import { tileLabel, type Suit } from '@/game/core/tile'
 import { TileView } from './TileView'
-import { useHotseatGame } from './useHotseatGame'
+import { useHotseatGame, RULES } from './useHotseatGame'
+
+function voidSuitLabel(action: Action): string {
+  const suit = action.type === 'voidSuit' ? action.suit : null
+  const names: Record<Suit, string> = {
+    wan: '万',
+    tong: '筒',
+    tiao: '条',
+    wind: '风',
+    dragon: '箭',
+    flower: '花',
+  }
+  return suit ? names[suit] : ''
+}
 
 function actionLabel(action: Action): string {
   switch (action.type) {
+    case 'voidSuit':
+      return '定缺'
     case 'draw':
       return '摸牌'
     case 'win':
@@ -38,9 +53,10 @@ function meldLabel(meld: Meld): string {
 }
 
 export function BoardView() {
-  const { snapshot, apply, reset } = useHotseatGame()
+  const { snapshot, apply, reset, ruleId } = useHotseatGame()
   const [selected, setSelected] = useState<number | null>(null)
 
+  const ruleLabel = RULES.find((r) => r.id === ruleId)?.label ?? ruleId
   const hand = snapshot.hands[snapshot.seat]
   const discardAction = snapshot.legalActions.find((a) => a.type === 'discard')
   const claimActions = snapshot.legalActions.filter(
@@ -65,7 +81,7 @@ export function BoardView() {
   return (
     <div className="board">
       <header className="board__header">
-        <h1>国标麻将 · 热座</h1>
+        <h1>{ruleLabel} · 热座</h1>
         <p>
           当前：<strong>{seatName(snapshot.seat)}</strong>
           {snapshot.activeClaimer !== null && (
@@ -73,9 +89,35 @@ export function BoardView() {
           )}{' '}
           · 剩余 {snapshot.wallRemaining} 张
         </p>
+        <div className="board__rule-select">
+          <span>选择规则：</span>
+          {RULES.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              className={r.id === ruleId ? 'board__rule-active' : ''}
+              onClick={() => reset(r.id)}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
       </header>
 
-      {snapshot.phase === 'ended' ? (
+      {snapshot.phase === 'voidSuit' ? (
+        <section className="board__voidsuit">
+          <h2>{seatName(snapshot.seat)} 定缺（选一门本局不要的花色）</h2>
+          <div className="board__actions">
+            {snapshot.legalActions
+              .filter((a) => a.type === 'voidSuit')
+              .map((a, i) => (
+                <button key={i} type="button" onClick={() => apply(a)}>
+                  缺 {voidSuitLabel(a)}
+                </button>
+              ))}
+          </div>
+        </section>
+      ) : snapshot.phase === 'ended' ? (
         <section className="board__result">
           {snapshot.winner !== null && snapshot.winInfo ? (
             <>
@@ -102,7 +144,7 @@ export function BoardView() {
           ) : (
             <h2>荒庄（流局）</h2>
           )}
-          <button type="button" onClick={reset}>
+          <button type="button" onClick={() => reset()}>
             重新开局
           </button>
         </section>

@@ -8,6 +8,7 @@ import {
   type Tile,
 } from '../../core/tile'
 import type {
+  ActionContext,
   HandState,
   KongOption,
   RulesPlugin,
@@ -26,9 +27,10 @@ export const guobiao: RulesPlugin = {
 
   isFlower: (tile) => tile.suit === 'flower',
 
-  legalChow(concealed, discard): [Tile, Tile][] {
-    if (!isNumberSuit(discard.suit)) return []
-    const counts = countTiles(concealed)
+  legalChow(ctx: ActionContext): [Tile, Tile][] {
+    const { hand, discard } = ctx
+    if (!discard || !isNumberSuit(discard.suit)) return []
+    const counts = countTiles(hand.concealed)
     const suit = discard.suit
     const r = discard.rank
     const results: [Tile, Tile][] = []
@@ -54,11 +56,14 @@ export const guobiao: RulesPlugin = {
     return results
   },
 
-  canPong(concealed, discard): boolean {
-    return (countTiles(concealed).get(tileKey(discard)) ?? 0) >= 2
+  canPong(ctx: ActionContext): boolean {
+    const { hand, discard } = ctx
+    if (!discard) return false
+    return (countTiles(hand.concealed).get(tileKey(discard)) ?? 0) >= 2
   },
 
-  kongOptions(hand: HandState, discard: Tile | null): KongOption[] {
+  kongOptions(ctx: ActionContext): KongOption[] {
+    const { hand, discard } = ctx
     const options: KongOption[] = []
     const counts = countTiles(hand.concealed)
 

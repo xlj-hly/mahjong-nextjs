@@ -32,6 +32,7 @@ function ctx(overrides: Partial<WinContext> = {}): WinContext {
     isKongReplacement: false,
     isRobbingKong: false,
     visibleCount: 0,
+    voidedSuit: null,
     ...overrides,
   }
 }
@@ -299,22 +300,39 @@ describe('结算', () => {
 })
 
 describe('吃碰杠合法性', () => {
+  function actionCtx(concealed: Tile[], discard: Tile | null) {
+    return {
+      hand: hand(concealed),
+      discard,
+      seat: 0 as const,
+      seatWind: 1,
+      roundWind: 1,
+      voidedSuit: null,
+    }
+  }
+
   it('碰：手牌两张相同可碰', () => {
     const concealed = tiles('3m3m')
-    expect(guobiao.canPong(concealed, { suit: 'wan', rank: 3 })).toBe(true)
-    expect(guobiao.canPong(concealed, { suit: 'wan', rank: 4 })).toBe(false)
+    expect(
+      guobiao.canPong(actionCtx(concealed, { suit: 'wan', rank: 3 })),
+    ).toBe(true)
+    expect(
+      guobiao.canPong(actionCtx(concealed, { suit: 'wan', rank: 4 })),
+    ).toBe(false)
   })
 
   it('吃：只能吃上家同花色相邻牌', () => {
     const concealed = tiles('4m5m')
-    const options = guobiao.legalChow(concealed, { suit: 'wan', rank: 3 })
+    const options = guobiao.legalChow(
+      actionCtx(concealed, { suit: 'wan', rank: 3 }),
+    )
     expect(options).toHaveLength(1)
     expect(options[0]).toContainEqual({ suit: 'wan', rank: 4 })
   })
 
   it('暗杠：手牌四张相同', () => {
     const concealed = tiles('7m7m7m7m')
-    const opts = guobiao.kongOptions(hand(concealed), null)
+    const opts = guobiao.kongOptions(actionCtx(concealed, null))
     expect(opts.some((o) => o.kind === 'concealed' && o.tile.rank === 7)).toBe(
       true,
     )

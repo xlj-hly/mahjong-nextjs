@@ -3,13 +3,14 @@
 
 import { createRunner } from './runner'
 import type { Action, Snapshot } from './core/state-machine'
-import type { Seat } from './core/rules-plugin'
+import type { RulesPlugin, Seat } from './core/rules-plugin'
 
-// 简单策略：优先赢，其次碰/杠，其次吃，否则出第一张可出的牌。
+// 简单策略：定缺时选第一门；否则优先赢，其次碰/杠，其次吃，否则出第一张可出的牌。
 function chooseAction(snap: Snapshot): Action {
   const actions = snap.legalActions
   const byType = (t: string) => actions.find((a) => a.type === t)
 
+  if (byType('voidSuit')) return byType('voidSuit')!
   if (byType('win')) return { type: 'win' }
   if (byType('kong')) return byType('kong')!
   if (byType('pong')) return { type: 'pong' }
@@ -21,8 +22,11 @@ function chooseAction(snap: Snapshot): Action {
   return { type: 'pass' }
 }
 
-export function runAutoGame(rng?: () => number): Snapshot | null {
-  const runner = createRunner(undefined, rng)
+export function runAutoGame(
+  plugin?: RulesPlugin,
+  rng?: () => number,
+): Snapshot | null {
+  const runner = createRunner(plugin, rng)
   let guard = 0
   while (!runner.isOver() && guard++ < 2000) {
     const overview = runner.snapshot(0)

@@ -2,10 +2,11 @@
 // 管理庄家/方位/发牌/摸牌/出牌/吃碰杠和的回合流转与结束判定，
 // 所有规则判断（花牌、动作合法性、和牌、番数、结算）委托给 RulesPlugin。
 
-import { sortTiles, tilesEqual, type Tile } from './tile'
+import { sortTiles, tilesEqual, type Suit, type Tile } from './tile'
 import { type Meld } from './decompose'
 import type { Wall } from './wall'
 import type {
+  ActionContext,
   HandState,
   KongKind,
   RulesPlugin,
@@ -14,9 +15,10 @@ import type {
   WinningInfo,
 } from './rules-plugin'
 
-export type GamePhase = 'draw' | 'discard' | 'claim' | 'ended'
+export type GamePhase = 'voidSuit' | 'draw' | 'discard' | 'claim' | 'ended'
 
 export type Action =
+  | { type: 'voidSuit'; suit: Suit }
   | { type: 'draw' }
   | { type: 'discard'; tile: Tile }
   | { type: 'win' }
@@ -54,6 +56,8 @@ export interface Snapshot {
   winner: Seat | null
   winInfo: WinningInfo | null
   score: ScoreResult | null
+  /** 当前座位已定缺的花色；未定缺为 null。 */
+  voidedSuit: Suit | null
 }
 
 const SEAT_NAMES = ['东', '南', '西', '北'] as const
@@ -87,6 +91,8 @@ export class Game {
   private score: ScoreResult | null
   private lastDrawn: Tile | null
   private kongReplacement: boolean
+  /** 各座位定缺的花色；无定缺规则的座位为 null。 */
+  private voidedSuits: (Suit | null)[]
 
   constructor(plugin: RulesPlugin, rng?: () => number) {
     this.plugin = plugin
@@ -109,12 +115,19 @@ export class Game {
     this.score = null
     this.lastDrawn = null
     this.kongReplacement = false
+    this.voidedSuits = [null, null, null, null]
 
     this.deal()
-    // 发牌后补花，庄家起手摸第 14 张进入出牌阶段。
+    // 发牌后补花。
     for (let s = 0; s < 4; s++) this.settleFlowers(s as Seat)
-    this.phase = 'draw'
-    this.current = this.dealer
+    // 需要定缺的规则（四川）进入定缺阶段；否则庄家直接摸牌进入行牌。
+    if (plugin.requiresVoidSuit) {
+      this.phase = 'voidSuit'
+      this.current = this.dealer
+    } else {
+      this.phase = 'draw'
+      this.current = this.dealer
+    }
   }
 
   // —— 发牌 ——
@@ -152,11 +165,41 @@ export class Game {
     return ((seat - this.dealer + 4) % 4) + 1
   }
 
+  /** 构造动作判定上下文（缺门随座位注入）。 */
+  private actionCtx(seat: Seat, discard: Tile | null): ActionContext {
+    return {
+      hand: this.hands[seat],
+      discard,
+      seat,
+      seatWind: this.seatWindOf(seat),
+      roundWind: this.roundWind,
+      voidedSuit: this.voidedSuits[seat],
+    }
+  }
+
   // —— 动作 ——
+
+  private doVoidSuit(seat: Seat, suit: Suit): void {
+    if (this.phase !== 'voidSuit' || seat !== this.current) {
+      throw new Error('当前不可定缺')
+    }
+    this.voidedSuits[seat] = suit
+    // 定缺按庄家→下家顺序依次进行，全部完成后进入行牌。
+    const next = ((seat + 1) % 4) as Seat
+    if (next === this.dealer) {
+      this.phase = 'draw'
+      this.current = this.dealer
+    } else {
+      this.current = next
+    }
+  }
 
   apply(seat: Seat, action: Action): void {
     if (this.phase === 'ended') throw new Error('对局已结束')
     switch (action.type) {
+      case 'voidSuit':
+        this.doVoidSuit(seat, action.suit)
+        break
       case 'draw':
         this.doDraw(seat)
         break
@@ -216,12 +259,12 @@ export class Game {
     const winners = order.filter((s) => this.canDiscardWin(s, tile))
     const pongKong = order.filter(
       (s) =>
-        this.plugin.canPong(this.hands[s].concealed, tile) ||
-        this.plugin.kongOptions(this.hands[s], tile).length > 0,
+        this.plugin.canPong(this.actionCtx(s, tile)) ||
+        this.plugin.kongOptions(this.actionCtx(s, tile)).length > 0,
     )
     const chowSeat = order[0]
     const canChow =
-      this.plugin.legalChow(this.hands[chowSeat].concealed, tile).length > 0
+      this.plugin.legalChow(this.actionCtx(chowSeat, tile)).length > 0
 
     const queue =
       winners.length > 0
@@ -291,7 +334,7 @@ export class Game {
       throw new Error('当前不可碰')
     }
     const { tile } = this.pendingDiscard
-    if (!this.plugin.canPong(this.hands[seat].concealed, tile)) {
+    if (!this.plugin.canPong(this.actionCtx(seat, tile))) {
       throw new Error('手牌不足两张，不可碰')
     }
     // 从手牌移除两张，与弃牌组成刻子副露。
@@ -322,7 +365,7 @@ export class Game {
       throw new Error('只有下家可以吃')
     }
     const { tile: discard } = this.pendingDiscard
-    const options = this.plugin.legalChow(this.hands[seat].concealed, discard)
+    const options = this.plugin.legalChow(this.actionCtx(seat, discard))
     const found = options.some(
       ([a, b]) =>
         (tilesEqual(a, pair[0]) && tilesEqual(b, pair[1])) ||
@@ -351,8 +394,7 @@ export class Game {
     ) {
       if (kind !== 'melded') throw new Error('吃碰阶段只能明杠')
       const options = this.plugin.kongOptions(
-        this.hands[seat],
-        this.pendingDiscard.tile,
+        this.actionCtx(seat, this.pendingDiscard.tile),
       )
       if (
         !options.some((o) => o.kind === 'melded' && tilesEqual(o.tile, tile))
@@ -375,7 +417,7 @@ export class Game {
       return
     }
     if (this.phase === 'discard' && seat === this.current) {
-      const options = this.plugin.kongOptions(this.hands[seat], null)
+      const options = this.plugin.kongOptions(this.actionCtx(seat, null))
       if (!options.some((o) => o.kind === kind && tilesEqual(o.tile, tile))) {
         throw new Error('不可杠')
       }
@@ -447,6 +489,7 @@ export class Game {
       isKongReplacement: this.kongReplacement,
       isRobbingKong: false,
       visibleCount: this.countVisible(winTile),
+      voidedSuit: this.voidedSuits[seat],
     })
   }
 
@@ -467,6 +510,7 @@ export class Game {
       isRobbingKong: false,
       // 点炮时，所和的那张已在牌河中（由调用方推进后统计）。
       visibleCount: this.countVisible(tile),
+      voidedSuit: this.voidedSuits[seat],
     })
   }
 
@@ -515,6 +559,15 @@ export class Game {
 
   private legalActions(seat: Seat): Action[] {
     if (this.phase === 'ended') return []
+    if (this.phase === 'voidSuit') {
+      // 定缺阶段：当前座位从万/筒/条三选一。
+      if (seat !== this.current) return []
+      return [
+        { type: 'voidSuit', suit: 'wan' },
+        { type: 'voidSuit', suit: 'tong' },
+        { type: 'voidSuit', suit: 'tiao' },
+      ]
+    }
     if (this.phase === 'draw') {
       return seat === this.current ? [{ type: 'draw' }] : []
     }
@@ -530,7 +583,7 @@ export class Game {
         }
       }
       if (this.evaluateSelfDrawWin(seat)) actions.push({ type: 'win' })
-      for (const opt of this.plugin.kongOptions(this.hands[seat], null)) {
+      for (const opt of this.plugin.kongOptions(this.actionCtx(seat, null))) {
         actions.push({ type: 'kong', kind: opt.kind, tile: opt.tile })
       }
       return actions
@@ -544,10 +597,7 @@ export class Game {
       if (cap.pong) actions.push({ type: 'pong' })
       if (cap.kong) actions.push({ type: 'kong', kind: 'melded', tile })
       if (this.isNextSeat(seat)) {
-        for (const pair of this.plugin.legalChow(
-          this.hands[seat].concealed,
-          tile,
-        )) {
+        for (const pair of this.plugin.legalChow(this.actionCtx(seat, tile))) {
           actions.push({ type: 'chow', tiles: pair })
         }
       }
@@ -560,11 +610,11 @@ export class Game {
   private claimCapability(seat: Seat, tile: Tile): ClaimCapability {
     return {
       win: this.canDiscardWin(seat, tile) !== null,
-      pong: this.plugin.canPong(this.hands[seat].concealed, tile),
-      kong: this.plugin.kongOptions(this.hands[seat], tile).length > 0,
+      pong: this.plugin.canPong(this.actionCtx(seat, tile)),
+      kong: this.plugin.kongOptions(this.actionCtx(seat, tile)).length > 0,
       chow:
         this.isNextSeat(seat) &&
-        this.plugin.legalChow(this.hands[seat].concealed, tile).length > 0,
+        this.plugin.legalChow(this.actionCtx(seat, tile)).length > 0,
     }
   }
 
@@ -597,6 +647,7 @@ export class Game {
       winner: this.winner,
       winInfo: this.winInfo,
       score: this.score,
+      voidedSuit: this.voidedSuits[seat],
     }
   }
 

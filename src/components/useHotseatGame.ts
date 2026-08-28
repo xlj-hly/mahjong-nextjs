@@ -5,8 +5,16 @@
 
 import { useCallback, useState } from 'react'
 import { createRunner, type Runner } from '@/game/runner'
+import { guobiao } from '@/game/rules/guobiao'
+import { sichuan } from '@/game/rules/sichuan'
 import type { Action, Snapshot } from '@/game/core/state-machine'
-import type { Seat } from '@/game/core/rules-plugin'
+import type { RulesPlugin, Seat } from '@/game/core/rules-plugin'
+
+export const RULES: Array<{ id: string; label: string; plugin: RulesPlugin }> =
+  [
+    { id: 'guobiao', label: '国标麻将', plugin: guobiao },
+    { id: 'sichuan', label: '四川麻将', plugin: sichuan },
+  ]
 
 function computeSnapshot(runner: Runner): Snapshot {
   const overview = runner.snapshot(0)
@@ -15,7 +23,8 @@ function computeSnapshot(runner: Runner): Snapshot {
 }
 
 export function useHotseatGame() {
-  const [runner, setRunner] = useState<Runner>(() => createRunner())
+  const [runner, setRunner] = useState<Runner>(() => createRunner(guobiao))
+  const [ruleId, setRuleId] = useState('guobiao')
   const [, setVersion] = useState(0)
 
   const snapshot = computeSnapshot(runner)
@@ -30,10 +39,15 @@ export function useHotseatGame() {
     [runner],
   )
 
-  const reset = useCallback(() => {
-    setRunner(createRunner())
-    setVersion((v) => v + 1)
-  }, [])
+  const reset = useCallback(
+    (id: string = ruleId) => {
+      const rule = RULES.find((r) => r.id === id) ?? RULES[0]
+      setRunner(createRunner(rule.plugin))
+      setRuleId(rule.id)
+      setVersion((v) => v + 1)
+    },
+    [ruleId],
+  )
 
-  return { snapshot, apply, reset }
+  return { snapshot, apply, reset, ruleId }
 }

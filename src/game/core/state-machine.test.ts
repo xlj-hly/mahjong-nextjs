@@ -102,6 +102,41 @@ describe('行牌状态机骨架', () => {
     expect(after.current).toBe(1)
   })
 
+  it('需定缺的规则：发牌后进入定缺阶段，依次定缺后进入行牌', () => {
+    const game = new Game(fakePlugin({ requiresVoidSuit: true }), () => 0)
+    // 发牌后处于定缺阶段，庄家先行定缺。
+    const snap0 = game.snapshot(0)
+    expect(snap0.phase).toBe('voidSuit')
+    expect(snap0.current).toBe(0)
+    expect(snap0.legalActions.map((a) => a.type)).toEqual([
+      'voidSuit',
+      'voidSuit',
+      'voidSuit',
+    ])
+
+    // 依次定缺 0→1→2→3
+    game.apply(0, { type: 'voidSuit', suit: 'wan' })
+    expect(game.snapshot(1).current).toBe(1)
+    expect(game.snapshot(1).phase).toBe('voidSuit')
+
+    game.apply(1, { type: 'voidSuit', suit: 'tong' })
+    expect(game.snapshot(2).current).toBe(2)
+
+    game.apply(2, { type: 'voidSuit', suit: 'tiao' })
+    expect(game.snapshot(3).current).toBe(3)
+
+    // 最后一位定缺后进入行牌阶段，庄家摸牌。
+    game.apply(3, { type: 'voidSuit', suit: 'wan' })
+    const after = game.snapshot(0)
+    expect(after.phase).toBe('draw')
+    expect(after.current).toBe(0)
+  })
+
+  it('不需定缺的规则：发牌后直接进入行牌', () => {
+    const game = new Game(fakePlugin(), () => 0)
+    expect(game.snapshot(0).phase).toBe('draw')
+  })
+
   it('只有下家能吃：非下家不提供吃动作', () => {
     // 让所有玩家都能碰，且都「能组成顺子」，验证非下家的 legalActions 不含 chow。
     const game = new Game(
