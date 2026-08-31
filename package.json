@@ -4,37 +4,23 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint",
+    "dev": "turbo run dev",
+    "dev:tui": "turbo run dev --ui tui",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "server": "tsx src/server/index.ts",
     "prepare": "husky"
-  },
-  "dependencies": {
-    "next": "16.3.3",
-    "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "socket.io": "^4.8.3",
-    "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.2",
     "@commitlint/config-conventional": "^21.2.2",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.3.3",
     "husky": "^9.1.7",
+    "lint-staged": "^16",
     "oxfmt": "^0.65.0",
-    "tsx": "^4.23.12",
-    "typescript": "^5",
-    "vitest": "^4.1.11"
+    "turbo": "^2"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx,mjs,cjs}": [
@@ -43,5 +29,6 @@
     "*.{json,jsonc,md,yaml,yml,css}": [
       "oxfmt"
     ]
-  }
+  },
+  "packageManager": "pnpm@11.24.0"
 }

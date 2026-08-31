@@ -1,0 +1,31 @@
+{
+  "name": "@mahjong/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup",
+    "start": "node --enable-source-maps dist/index.js",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1",
+    "@mahjong/game-core": "workspace:*",
+    "@mahjong/protocol": "workspace:*",
+    "hono": "^4",
+    "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "@mahjong/eslint-config": "workspace:*",
+    "@types/node": "^20",
+    "eslint": "^9",
+    "socket.io-client": "^4.8.3",
+    "tsup": "^8",
+    "tsx": "^4",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

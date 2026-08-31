@@ -1,5 +1,5 @@
 /** @type {import('@commitlint/types').UserConfig} */
-const commitlintConfig = {
+export default {
   extends: ['@commitlint/config-conventional'],
   rules: {
     'subject-case': [0],
@@ -7,5 +7,3 @@ const commitlintConfig = {
     'footer-max-line-length': [0],
   },
 }
-
-export default commitlintConfig

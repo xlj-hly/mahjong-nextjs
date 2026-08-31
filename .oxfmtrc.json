@@ -13,12 +13,14 @@
   "ignorePatterns": [
     ".agents/**",
     ".claude/**",
-    "dist/**",
-    "coverage/**",
-    "public/**",
-    ".next/**",
-    "out/**",
-    "build/**",
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/coverage/**",
+    "**/.next/**",
+    "**/out/**",
+    "**/build/**",
+    ".turbo/**",
+    "apps/web/public/**",
     "pnpm-lock.yaml",
     "next-env.d.ts"
   ]
