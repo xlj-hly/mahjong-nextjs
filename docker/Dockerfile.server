@@ -1,0 +1,80 @@
+# syntax=docker/dockerfile:1
+
+# npm registry 可覆盖：国内服务器默认走 npmmirror，国外可 --build-arg NPM_REGISTRY=https://registry.npmjs.org/
+ARG NPM_REGISTRY=https://registry.npmmirror.com/
+
+# ============ 阶段1 build：全量安装 + 构建（本阶段丢弃） ============
+FROM node:22-alpine AS build
+ARG NPM_REGISTRY
+# npm 读取 npm_config_registry（供 npm install -g pnpm 走镜像）
+ENV npm_config_registry=${NPM_REGISTRY}
+# husky 装上了也让它 no-op（容器里不装 git hooks）
+ENV HUSKY=0
+WORKDIR /repo
+
+RUN npm install -g pnpm@11.24.0
+# pnpm 11 不读 npm_config_* 环境变量，须用 .npmrc：
+# - trust-lockfile=true：跳过 install 的 supply-chain 锁文件校验（默认开启，慢且易 ERR_PNPM_BROKEN_METADATA_JSON）
+# - verify-deps-before-run=false：关掉 pnpm run 前的「node_modules 与 lockfile 同步」校验
+#   （--filter 装出的 node_modules 是 lockfile 的子集，避免误报）
+RUN printf 'registry=%s\ntrust-lockfile=true\nverify-deps-before-run=false\n' "$NPM_REGISTRY" > .npmrc
+
+# 先拷贝全部 workspace 清单 + 根 tsconfig（各包 tsconfig 都 extends 它）
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json ./
+COPY apps/server/package.json            apps/server/
+COPY apps/web/package.json               apps/web/
+COPY packages/game-core/package.json     packages/game-core/
+COPY packages/protocol/package.json      packages/protocol/
+COPY packages/eslint-config/package.json packages/eslint-config/
+
+# 只装 server 子树（含 devDeps，构建需要）；不装 web 的 next/react
+RUN pnpm install --frozen-lockfile --filter=@mahjong/server...
+
+COPY apps apps
+COPY packages packages
+# 拓扑序构建：server 依赖的内部包先构建
+RUN pnpm --filter=@mahjong/game-core run build \
+ && pnpm --filter=@mahjong/protocol run build \
+ && pnpm --filter=@mahjong/server run build
+
+# ============ 阶段2 deps：只装生产依赖（本阶段丢弃，产出 node_modules） ============
+FROM node:22-alpine AS deps
+ARG NPM_REGISTRY
+ENV npm_config_registry=${NPM_REGISTRY}
+WORKDIR /repo
+
+RUN npm install -g pnpm@11.24.0
+# 同 build：trust-lockfile=true 跳过锁文件校验；本阶段不跑 pnpm run，无需 verify-deps-before-run
+RUN printf 'registry=%s\ntrust-lockfile=true\n' "$NPM_REGISTRY" > .npmrc
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/server/package.json            apps/server/
+COPY apps/web/package.json               apps/web/
+COPY packages/game-core/package.json     packages/game-core/
+COPY packages/protocol/package.json      packages/protocol/
+COPY packages/eslint-config/package.json packages/eslint-config/
+
+# 只装生产依赖；--ignore-scripts 跳过 prepare:husky（husky 是 devDep，--prod 阶段不存在）
+RUN pnpm install --prod --frozen-lockfile --ignore-scripts --filter=@mahjong/server...
+
+# ============ 阶段3 runtime：只 COPY 产物，无 pnpm、无安装 ============
+FROM node:22-alpine AS runtime
+ENV NODE_ENV=production
+WORKDIR /repo
+
+# 生产依赖（.pnpm 虚拟 store + 各包 node_modules 符号链接）
+COPY --from=deps /repo/node_modules ./node_modules
+COPY --from=deps /repo/apps/server/node_modules ./apps/server/node_modules
+
+# 构建产物：server dist + workspace 包 dist（连同 package.json 供 exports 解析）
+COPY --from=build /repo/apps/server/dist                apps/server/dist
+COPY --from=build /repo/packages/game-core/package.json packages/game-core/package.json
+COPY --from=build /repo/packages/game-core/dist         packages/game-core/dist
+COPY --from=build /repo/packages/protocol/package.json  packages/protocol/package.json
+COPY --from=build /repo/packages/protocol/dist          packages/protocol/dist
+
+USER node
+EXPOSE 3001
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3001)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["node", "--enable-source-maps", "apps/server/dist/index.js"]

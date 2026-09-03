@@ -1,0 +1,45 @@
+# 线上部署用 compose：只 pull、不 build（配合 deploy.sh 的 `docker compose pull` + `up -d --force-recreate`）。
+# 部署时把这个文件放到服务器 /opt/www/mahjong/docker-compose.yml，
+# 并在同目录建 .env（参考 docker/.env.example）写入 DOCKER_USERNAME，docker compose 会自动读取。
+services:
+  server:
+    image: ${DOCKER_USERNAME}/mahjong-server:latest
+    ports:
+      - '3001:3001'
+    environment:
+      PORT: '3001'
+      NODE_ENV: production
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:'+(process.env.PORT||3001)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
+  web:
+    image: ${DOCKER_USERNAME}/mahjong-web:latest
+    ports:
+      - '3000:3000'
+    environment:
+      PORT: '3000'
+      NODE_ENV: production
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped

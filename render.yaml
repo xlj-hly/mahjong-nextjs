@@ -1,0 +1,21 @@
+# Render Blueprint：麻将服务端（apps/server）。
+# 创建方式：Render Dashboard → New + → Blueprint → 选择本仓库 → Apply。
+# 创建后所有配置以本文件为准，push 到部署分支自动重新部署。
+services:
+  - type: web
+    name: mahjong-server
+    runtime: node
+    plan: free
+    # 默认部署仓库默认分支（master）；如需部署 dev 分支，取消下一行注释
+    # branch: dev
+    region: singapore
+    # 不设 rootDir：服务端依赖 packages/* 的编译产物（dist），
+    # 改动共享包也必须触发服务端重部署，故命令在仓库根执行。
+    # install 也走 --filter 只装 server 子树（与 Dockerfile 一致；根 devDeps 如 turbo 仍会安装，已验证）。
+    buildCommand: 'pnpm install --frozen-lockfile --filter=@mahjong/server... && pnpm exec turbo run build --filter=@mahjong/server...'
+    startCommand: node --enable-source-maps apps/server/dist/index.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: '22'
+      # PORT 由 Render 自动注入（默认 10000），服务端代码已读取 process.env.PORT

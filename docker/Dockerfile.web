@@ -1,0 +1,59 @@
+# syntax=docker/dockerfile:1
+
+# npm registry 可覆盖：国内服务器默认走 npmmirror，国外可 --build-arg NPM_REGISTRY=https://registry.npmjs.org/
+ARG NPM_REGISTRY=https://registry.npmmirror.com/
+
+# ============ 阶段1 build：全量安装 + 构建（本阶段丢弃） ============
+FROM node:22-alpine AS build
+ARG NPM_REGISTRY
+# npm 读取 npm_config_registry（供 npm install -g pnpm 走镜像）
+ENV npm_config_registry=${NPM_REGISTRY}
+# husky 装上了也让它 no-op（容器里不装 git hooks）
+ENV HUSKY=0
+# 关掉 Next 遥测，避免非交互环境里的联网尝试
+ENV NEXT_TELEMETRY_DISABLED=1
+WORKDIR /repo
+
+RUN npm install -g pnpm@11.24.0
+# pnpm 11 不读 npm_config_* 环境变量，须用 .npmrc：
+# - trust-lockfile=true：跳过 install 的 supply-chain 锁文件校验
+# - verify-deps-before-run=false：关掉 pnpm run 前的同步校验（--filter 装出的是 lockfile 子集）
+RUN printf 'registry=%s\ntrust-lockfile=true\nverify-deps-before-run=false\n' "$NPM_REGISTRY" > .npmrc
+
+# 先拷贝全部 workspace 清单 + 根 tsconfig（依赖层缓存）
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json ./
+COPY apps/server/package.json            apps/server/
+COPY apps/web/package.json               apps/web/
+COPY packages/game-core/package.json     packages/game-core/
+COPY packages/protocol/package.json      packages/protocol/
+COPY packages/eslint-config/package.json packages/eslint-config/
+
+# 只装 web 子树（含 devDeps，构建需要）；不装 server 的 hono/socket.io
+RUN pnpm install --frozen-lockfile --filter=@mahjong/web...
+
+COPY apps apps
+COPY packages packages
+# 拓扑序构建：web 消费的内部包先构建，再 next build
+RUN pnpm --filter=@mahjong/game-core run build \
+ && pnpm --filter=@mahjong/protocol run build \
+ && pnpm --filter=@mahjong/web run build
+
+# ============ 阶段2 runtime：只 COPY standalone 产物，无 pnpm、无安装 ============
+FROM node:22-alpine AS runtime
+ENV NODE_ENV=production
+WORKDIR /repo
+
+# standalone 自带 server.js + 被 trace 的最小 node_modules（next/react 等运行时依赖）
+COPY --from=build --chown=node:node /repo/apps/web/.next/standalone ./
+# 静态资源与 public 不随 standalone 自动拷贝，需手动补（server.js 位于 apps/web/ 下）
+COPY --from=build --chown=node:node /repo/apps/web/.next/static ./apps/web/.next/static
+COPY --from=build --chown=node:node /repo/apps/web/public       ./apps/web/public
+
+USER node
+EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+# Next standalone 无 /health 端点，用首页做存活探测
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["node", "apps/web/server.js"]

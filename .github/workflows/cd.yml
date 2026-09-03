@@ -1,0 +1,80 @@
+name: CD
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # packages: write # GHCR 推送需要
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # 构建并推送两个镜像，分别对应 docker-compose.yml 里的 mahjong-server / mahjong-web
+  # 注：Dockerfile 内部已完整构建（game-core + protocol + server/web），无需再单独跑 pnpm build
+  docker_push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      # - name: Login to GitHub Container Registry
+      #   uses: docker/login-action@v4
+      #   with:
+      #     registry: ghcr.io
+      #     username: ${{ github.actor }}
+      #     password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push server
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile.server
+          push: true
+          # runner 在国外：覆盖 Dockerfile 默认的 npmmirror，走官方源（与 Dockerfile 注释约定一致）
+          build-args: NPM_REGISTRY=https://registry.npmjs.org/
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/mahjong-server:latest
+          #  ghcr.io/${{ github.repository_owner }}/mahjong-server:latest
+
+      - name: Build and push web
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile.web
+          push: true
+          # runner 在国外：覆盖 Dockerfile 默认的 npmmirror，走官方源（与 Dockerfile 注释约定一致）
+          build-args: NPM_REGISTRY=https://registry.npmjs.org/
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/mahjong-web:latest
+          #  ghcr.io/${{ github.repository_owner }}/mahjong-web:latest
+
+  # SSH 登录服务器执行部署脚本（脚本里应 docker compose pull + up -d 拉取新镜像）
+  deploy:
+    needs: docker_push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run deploy script on server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          # 更安全：用私钥登录（key: ${{ secrets.SERVER_SSH_KEY }}）替代 password
+          password: ${{ secrets.SERVER_PASSWORD }}
+          # 默认 22 端口可删掉此行
+          port: ${{ secrets.SERVER_PORT }}
+          # TODO: 改成你服务器上真实的脚本路径（原文件 /opt/www/book/deploy.sh 是 book 项目的残留）
+          script: bash /opt/www/mahjong/deploy.sh

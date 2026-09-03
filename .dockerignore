@@ -1,0 +1,23 @@
+# 依赖
+node_modules
+**/node_modules
+
+# 构建产物（容器内会重新构建）
+**/dist
+.next
+out
+.turbo
+
+# git / env / husky
+.git
+.gitignore
+.env*
+.husky
+
+# 测试/日志
+coverage
+*.log
+
+# IDE
+.idea
+.vscode
