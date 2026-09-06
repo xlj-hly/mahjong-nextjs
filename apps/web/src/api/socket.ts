@@ -3,7 +3,12 @@
 
 import { io, type Socket } from 'socket.io-client'
 import type { Action, Seat, Snapshot } from '@mahjong/game-core'
-import type { ClientMessage, ServerMessage, RoomMember } from './protocol'
+import type {
+  ClientMessage,
+  RoomMember,
+  RuleId,
+  ServerMessage,
+} from '@mahjong/protocol'
 
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected'
 
@@ -17,7 +22,7 @@ export interface NetworkRunner {
   /** 房间成员。 */
   members: RoomMember[]
   /** 当前规则。 */
-  rule: string
+  rule: RuleId
   /** 对局是否已开始。 */
   started: boolean
   /** 对局是否已结束。 */
@@ -28,7 +33,7 @@ export interface NetworkRunner {
   error: string | null
 
   /** 创建房间。 */
-  createRoom(rule: string): void
+  createRoom(rule: RuleId): void
   /** 加入房间。 */
   joinRoom(code: string): void
   /** 准备。 */
@@ -44,13 +49,22 @@ export interface NetworkRunner {
   disconnect(): void
 }
 
-export function createNetworkRunner(serverUrl: string): NetworkRunner {
+export interface NetworkRunnerOptions {
+  /** 服务端地址；缺省（undefined）时 socket.io-client 自动使用当前页面同源。 */
+  url?: string
+  /** socket.io path，服务端与反向代理需保持一致。 */
+  path?: string
+}
+
+export function createNetworkRunner(
+  opts: NetworkRunnerOptions = {},
+): NetworkRunner {
   let socket: Socket | null = null
   let snapshot: Snapshot | null = null
   let seat: Seat | null = null
   let roomCode: string | null = null
   let members: RoomMember[] = []
-  let rule = 'guobiao'
+  let rule: RuleId = 'guobiao'
   let started = false
   let isOver = false
   let connectionState: ConnectionState = 'disconnected'
@@ -68,7 +82,7 @@ export function createNetworkRunner(serverUrl: string): NetworkRunner {
         members = msg.members
         rule = msg.rule
         started = msg.started
-        seat = msg.yourSeat as Seat
+        seat = msg.yourSeat
         error = null
         break
       case 'snapshot':
@@ -89,9 +103,12 @@ export function createNetworkRunner(serverUrl: string): NetworkRunner {
     notify()
   }
 
+  // 默认 /ws：与反向代理的 /ws/ 分流、服务端的 path 保持一致
+  const socketPath = opts.path ?? '/ws'
+
   function ensureConnected() {
     if (socket?.connected) return
-    socket = io(serverUrl, { transports: ['websocket'] })
+    socket = io(opts.url, { path: socketPath, transports: ['websocket'] })
     connectionState = 'connecting'
     notify()
 
@@ -142,8 +159,8 @@ export function createNetworkRunner(serverUrl: string): NetworkRunner {
       return error
     },
 
-    createRoom(rule: string) {
-      send({ type: 'create', rule: rule as 'guobiao' | 'sichuan' })
+    createRoom(rule: RuleId) {
+      send({ type: 'create', rule })
     },
     joinRoom(code: string) {
       send({ type: 'join', code })

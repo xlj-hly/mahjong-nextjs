@@ -1,13 +1,15 @@
 // 网络协议类型定义：客户端↔服务端消息格式。
 // 直接映射引擎的 snapshot/apply 两个口子，不承载规则语义。
 
-import type { Action, Snapshot } from '@mahjong/game-core'
+import type { Action, Seat, Snapshot } from '@mahjong/game-core'
 
 // —— 客户端 → 服务端 ——
 
+export type RuleId = 'guobiao' | 'sichuan'
+
 export interface CreateRoomMessage {
   type: 'create'
-  rule: 'guobiao' | 'sichuan'
+  rule: RuleId
 }
 
 export interface JoinRoomMessage {
@@ -38,7 +40,7 @@ export type ClientMessage =
 // —— 服务端 → 客户端 ——
 
 export interface RoomMember {
-  seat: number
+  seat: Seat
   ready: boolean
 }
 
@@ -46,9 +48,9 @@ export interface RoomMessage {
   type: 'room'
   code: string
   members: RoomMember[]
-  rule: string
+  rule: RuleId
   started: boolean
-  yourSeat: number
+  yourSeat: Seat
 }
 
 export interface SnapshotMessage {

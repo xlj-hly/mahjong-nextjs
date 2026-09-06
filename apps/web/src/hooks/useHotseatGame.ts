@@ -7,19 +7,13 @@ import { useCallback, useState } from 'react'
 import {
   createRunner,
   guobiao,
-  sichuan,
   type Action,
-  type RulesPlugin,
   type Runner,
   type Seat,
   type Snapshot,
 } from '@mahjong/game-core'
-
-export const RULES: Array<{ id: string; label: string; plugin: RulesPlugin }> =
-  [
-    { id: 'guobiao', label: '国标麻将', plugin: guobiao },
-    { id: 'sichuan', label: '四川麻将', plugin: sichuan },
-  ]
+import type { RuleId } from '@mahjong/protocol'
+import { RULES } from '@/lib/rules'
 
 function computeSnapshot(runner: Runner): Snapshot {
   const overview = runner.snapshot(0)
@@ -29,7 +23,7 @@ function computeSnapshot(runner: Runner): Snapshot {
 
 export function useHotseatGame() {
   const [runner, setRunner] = useState<Runner>(() => createRunner(guobiao))
-  const [ruleId, setRuleId] = useState('guobiao')
+  const [ruleId, setRuleId] = useState<RuleId>('guobiao')
   const [, setVersion] = useState(0)
 
   const snapshot = computeSnapshot(runner)
@@ -45,7 +39,7 @@ export function useHotseatGame() {
   )
 
   const reset = useCallback(
-    (id: string = ruleId) => {
+    (id: RuleId = ruleId) => {
       const rule = RULES.find((r) => r.id === id) ?? RULES[0]
       setRunner(createRunner(rule.plugin))
       setRuleId(rule.id)

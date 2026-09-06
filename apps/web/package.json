@@ -8,21 +8,27 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@mahjong/game-core": "workspace:*",
     "@mahjong/protocol": "workspace:*",
     "next": "16.3.3",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
     "@mahjong/eslint-config": "workspace:*",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.3.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "typescript": "catalog:"
+    "jsdom": "^26.1.0",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

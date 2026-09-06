@@ -19,8 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@mahjong/game-core": "workspace:*",
-    "socket.io-client": "^4.8.3"
+    "@mahjong/game-core": "workspace:*"
   },
   "devDependencies": {
     "@mahjong/eslint-config": "workspace:*",

@@ -1,8 +1,5 @@
-// @mahjong/protocol 公开入口：网络协议消息类型 + NetworkRunner 客户端封装。
+// @mahjong/protocol 公开入口：客户端↔服务端网络协议消息类型（纯类型，无运行时）。
 
-export { createNetworkRunner } from './network-runner'
-
-export type { ConnectionState, NetworkRunner } from './network-runner'
 export type {
   ActionMessage,
   ClientMessage,
@@ -13,6 +10,7 @@ export type {
   ReadyMessage,
   RoomMember,
   RoomMessage,
+  RuleId,
   ServerMessage,
   SnapshotMessage,
   StartMessage,

@@ -1,11 +1,23 @@
 services:
+  # 唯一对外入口：按统一前缀分流（/ → web，/api/ 与 /ws/ → server）
+  nginx:
+    image: nginx:alpine
+    depends_on:
+      - server
+      - web
+    ports:
+      - '80:80'
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
+
   server:
     build:
       context: .
       dockerfile: docker/Dockerfile.server
     image: mahjong-server:latest
-    ports:
-      - '3001:3001'
+    expose:
+      - '3001'
     environment:
       PORT: '3001'
       NODE_ENV: production
@@ -29,8 +41,8 @@ services:
       context: .
       dockerfile: docker/Dockerfile.web
     image: mahjong-web:latest
-    ports:
-      - '3000:3000'
+    expose:
+      - '3000'
     environment:
       PORT: '3000'
       NODE_ENV: production

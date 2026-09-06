@@ -1,8 +1,7 @@
 // 服务端集成测试：模拟 4 名玩家通过 Socket.io 完成一局对局。
 
-import { describe, expect, it, beforeAll, afterAll, beforeEach } from 'vitest'
+import { describe, expect, it, beforeAll, afterAll } from 'vitest'
 import { createApp } from './index'
-import { resetRooms } from './room'
 import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client'
 import type { Server } from 'socket.io'
 import type { ServerMessage } from '@mahjong/protocol'
@@ -13,6 +12,7 @@ const PORT = 3099
 function createClient(): ClientSocket {
   return ioClient(`http://localhost:${PORT}`, {
     transports: ['websocket'],
+    path: '/ws',
     forceNew: true,
   })
 }
@@ -56,10 +56,6 @@ describe('服务端集成测试', () => {
   afterAll(async () => {
     io.close()
     httpServer.close()
-  })
-
-  beforeEach(() => {
-    resetRooms()
   })
 
   it('4 名玩家加入 → 准备 → 开局 → 出牌流转 → 和牌结算（国标）', async () => {
